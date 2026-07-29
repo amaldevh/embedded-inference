@@ -1,10 +1,10 @@
-from quarc_stream import  Server
+from quarc_stream import  Streamer
 from threading import Thread 
 import numpy as np
 
 if __name__ == "__main__":
 
-    server =  Server("tcpip://localhost:5001")
+    server =  Streamer("tcpip://localhost:5001", 6, 5, Server.SERVER)
     for i in range(10):
         server.receive(5)
         print("Server Got: ", server.recv)
