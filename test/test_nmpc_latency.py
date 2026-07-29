@@ -13,7 +13,7 @@ if __name__ == "__main__":
     desired = np.array((1, 1, 1, 0, 0 , 0, 1, 0, 0,0))
     ts = time.perf_counter()
     for i in range(1000):
-        controller.calculate_uopt(state, state_dot, desired)
+        controller.calculate_control(state, state_dot, desired)
     tf = time.perf_counter()
     print("Total time: ", tf-ts)
     print("Avg. time per step: ", (tf-ts)/1000)

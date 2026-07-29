@@ -7,7 +7,8 @@ import os
 import shutil
 import sys 
 import time
-from DATT.learning.auxiliary_controller import AuxiliaryController 
+#from DATT.learning.auxiliary_controller import AuxiliaryController 
+class AuxiliaryController:...
 
 def quadrotor_dynamics_ctbr():
     """ Defines the quadrotor dynamics using CasADi for Collective thrust and body rates."""
@@ -119,6 +120,7 @@ def acados_ocp_solver(mass: float, gravity: np.ndarray,
 
     # set prediction horizon
     ocp.solver_options.N_horizon = 10
+    ocp.dims.N = 10
     ocp.solver_options.tf = 1000e-3/5  # 0.2 seconds horizon
     ocp.solver_options.qp_solver_iter_max = 50
     # set ocp options
@@ -184,7 +186,7 @@ class NMPCController(AuxiliaryController):
             self.ocp_solver.set(i, "yref", np.concatenate((des_state_, self.u_ref)))
         self.ocp_solver.set(self.N_horizon, "yref", des_state_)
         # status = self.ocp_solver.solve()
-        self.u_opt = self.ocp_solver.solve_for_x0(x0_bar =state[:10], fail_on_nonzero_status = True)
+        self.u_opt = self.ocp_solver.solve_for_x0(x0_bar =state[:10]) #, fail_on_nonzero_status = True)
         return self.u_opt
 
     def reset(self):
