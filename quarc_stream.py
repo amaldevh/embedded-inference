@@ -33,7 +33,7 @@ class Streamer:
         self.stream.send_double_array(data, len(data))
         self.stream.flush()
 
-    def receive(self N):
+    def receive(self, N):
         if self.recv.size != N:
             self.recv = np.zeros((N))
         result = self.stream.receive_double_array(self.recv, len(self.recv))
