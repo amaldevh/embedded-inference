@@ -1,11 +1,7 @@
 """Persistent-buffer TensorRT runtime backed by PyTorch CUDA tensors."""
 
-#from __future__ import annotations
-
-from dataclasses import dataclass
+from collections import namedtuple
 from pathlib import Path
-from typing import Dict, Mapping, Optional, Tuple
-
 import numpy as np
 import tensorrt as trt
 import torch
@@ -14,16 +10,12 @@ import torch
 LOGGER = trt.Logger(trt.Logger.WARNING)
 
 
-@dataclass(frozen=True)
-class TensorInfo:
-    name: str
-    shape: Tuple[int, ...]
-    dtype: torch.dtype
-    is_input: bool
-    binding_index: int
+TensorInfo = namedtuple(
+    "TensorInfo", ("name", "shape", "dtype", "is_input", "binding_index")
+)
 
 
-def _torch_dtype(trt_dtype: trt.DataType) -> torch.dtype:
+def _torch_dtype(trt_dtype):
     numpy_dtype = np.dtype(trt.nptype(trt_dtype))
     mapping = {
         np.dtype(np.bool_): torch.bool,
@@ -49,12 +41,14 @@ class TensorRTRunner:
 
     def __init__(
         self,
-        engine_path: str | Path,
-        device: str = "cuda:0",
-        stream: Optional[torch.cuda.Stream] = None,
-    ) -> None:
+        engine_path,
+        device="cuda:0",
+        stream=None,
+    ):
         if not torch.cuda.is_available():
-            raise RuntimeError("CUDA is unavailable; TensorRTRunner requires an NVIDIA GPU")
+            raise RuntimeError(
+                "CUDA is unavailable; TensorRTRunner requires an NVIDIA GPU"
+            )
         self.device = torch.device(device)
         torch.cuda.set_device(self.device)
         trt.init_libnvinfer_plugins(LOGGER, "")
@@ -69,22 +63,22 @@ class TensorRTRunner:
         self.stream = stream or torch.cuda.Stream(device=self.device)
         self._uses_tensor_api = hasattr(self.engine, "num_io_tensors")
         self.infos = self._inspect_tensors()
-        self.inputs: Dict[str, torch.Tensor] = {}
-        self.outputs: Dict[str, torch.Tensor] = {}
-        self.host_outputs: Dict[str, torch.Tensor] = {}
+        self.inputs = {}
+        self.outputs = {}
+        self.host_outputs = {}
         self._bindings = [0] * self._binding_count()
         self._allocate()
-        self._cuda_graph: Optional[torch.cuda.CUDAGraph] = None
+        self._cuda_graph = None
 
-    def _binding_count(self) -> int:
+    def _binding_count(self):
         if self._uses_tensor_api:
             # execute_async_v3 does not consume this list, but keeping it populated
             # simplifies the common allocation path.
             return self.engine.num_io_tensors
         return self.engine.num_bindings
 
-    def _inspect_tensors(self) -> Dict[str, TensorInfo]:
-        infos: Dict[str, TensorInfo] = {}
+    def _inspect_tensors(self):
+        infos = {}
         if self._uses_tensor_api:
             for index in range(self.engine.num_io_tensors):
                 name = self.engine.get_tensor_name(index)
@@ -108,7 +102,9 @@ class TensorRTRunner:
                     is_input=bool(self.engine.binding_is_input(index)),
                     binding_index=index,
                 )
-        dynamic = [info.name for info in infos.values() if any(d < 0 for d in info.shape)]
+        dynamic = [
+            info.name for info in infos.values() if any(d < 0 for d in info.shape)
+        ]
         if dynamic:
             raise ValueError(
                 "TensorRTRunner currently requires a fixed-shape engine; dynamic tensors: "
@@ -116,7 +112,7 @@ class TensorRTRunner:
             )
         return infos
 
-    def _allocate(self) -> None:
+    def _allocate(self):
         for info in self.infos.values():
             tensor = torch.empty(info.shape, dtype=info.dtype, device=self.device)
             if info.is_input:
@@ -133,14 +129,14 @@ class TensorRTRunner:
                     raise RuntimeError(f"Could not bind TensorRT tensor {info.name!r}")
 
     @property
-    def input_info(self) -> Dict[str, TensorInfo]:
+    def input_info(self):
         return {name: info for name, info in self.infos.items() if info.is_input}
 
     @property
-    def output_info(self) -> Dict[str, TensorInfo]:
+    def output_info(self):
         return {name: info for name, info in self.infos.items() if not info.is_input}
 
-    def _enqueue(self) -> None:
+    def _enqueue(self):
         stream_pointer = self.stream.cuda_stream
         if self._uses_tensor_api:
             ok = self.context.execute_async_v3(stream_pointer)
@@ -151,7 +147,7 @@ class TensorRTRunner:
         if not ok:
             raise RuntimeError("TensorRT enqueue failed")
 
-    def set_inputs(self, values: Mapping[str, torch.Tensor | np.ndarray]) -> None:
+    def set_inputs(self, values):
         missing = set(self.inputs) - set(values)
         extra = set(values) - set(self.inputs)
         if missing or extra:
@@ -162,7 +158,9 @@ class TensorRTRunner:
         with torch.cuda.stream(self.stream):
             for name, value in values.items():
                 destination = self.inputs[name]
-                source = value if isinstance(value, torch.Tensor) else torch.as_tensor(value)
+                source = (
+                    value if isinstance(value, torch.Tensor) else torch.as_tensor(value)
+                )
                 if tuple(source.shape) != tuple(destination.shape):
                     raise ValueError(
                         f"{name!r} expects shape {tuple(destination.shape)}, "
@@ -174,7 +172,7 @@ class TensorRTRunner:
                     )
                 destination.copy_(source, non_blocking=True)
 
-    def enqueue(self, use_cuda_graph: bool = False) -> None:
+    def enqueue(self, use_cuda_graph=False):
         with torch.cuda.stream(self.stream):
             if use_cuda_graph:
                 if self._cuda_graph is None:
@@ -183,10 +181,10 @@ class TensorRTRunner:
             else:
                 self._enqueue()
 
-    def synchronize(self) -> None:
+    def synchronize(self):
         self.stream.synchronize()
 
-    def copy_outputs_to_host(self, synchronize: bool = True) -> Dict[str, np.ndarray]:
+    def copy_outputs_to_host(self, synchronize=True):
         with torch.cuda.stream(self.stream):
             for name, output in self.outputs.items():
                 self.host_outputs[name].copy_(output, non_blocking=True)
@@ -196,11 +194,11 @@ class TensorRTRunner:
 
     def infer(
         self,
-        values: Mapping[str, torch.Tensor | np.ndarray],
-        return_cpu: bool = True,
-        synchronize: bool = True,
-        use_cuda_graph: bool = False,
-    ) -> Dict[str, torch.Tensor] | Dict[str, np.ndarray]:
+        values,
+        return_cpu=True,
+        synchronize=True,
+        use_cuda_graph=False,
+    ):
         self.set_inputs(values)
         self.enqueue(use_cuda_graph=use_cuda_graph)
         if return_cpu:
@@ -209,7 +207,7 @@ class TensorRTRunner:
             self.synchronize()
         return self.outputs
 
-    def capture_cuda_graph(self, warmup: int = 5) -> None:
+    def capture_cuda_graph(self, warmup=5):
         """Capture TensorRT enqueue for fixed addresses and shapes.
 
         Input copies and output copies intentionally remain outside the graph. This
@@ -226,7 +224,7 @@ class TensorRTRunner:
         self._cuda_graph = graph
         self.synchronize()
 
-    def describe(self) -> str:
+    def describe(self):
         lines = [f"TensorRT {trt.__version__} engine: {self.engine.name}"]
         for info in self.infos.values():
             mode = "input " if info.is_input else "output"

@@ -1,12 +1,8 @@
 """Shared command-line and reporting utilities."""
 
-#from __future__ import annotations
-
 import importlib
 import json
 from pathlib import Path
-from typing import Any, Dict, Mapping, Sequence, Tuple
-
 import numpy as np
 
 
@@ -23,7 +19,7 @@ TORCH_DTYPES = {
 }
 
 
-def import_symbol(spec: str) -> Any:
+def import_symbol(spec):
     """Import ``module.submodule:symbol``."""
     if ":" not in spec:
         raise ValueError(f"Expected MODULE:SYMBOL, got {spec!r}")
@@ -35,7 +31,7 @@ def import_symbol(spec: str) -> Any:
         raise AttributeError(f"{module_name!r} has no symbol {symbol_name!r}") from exc
 
 
-def parse_json_object(value: str | None) -> Dict[str, Any]:
+def parse_json_object(value):
     if not value:
         return {}
     parsed = json.loads(value)
@@ -44,7 +40,7 @@ def parse_json_object(value: str | None) -> Dict[str, Any]:
     return parsed
 
 
-def parse_input_spec(value: str) -> Tuple[str, Tuple[int, ...], str]:
+def parse_input_spec(value):
     """Parse ``NAME:D0,D1,...[:DTYPE]``."""
     parts = value.split(":")
     if len(parts) not in (2, 3):
@@ -68,7 +64,7 @@ def parse_input_spec(value: str) -> Tuple[str, Tuple[int, ...], str]:
     return name, shape, dtype
 
 
-def percentile_summary(samples_ms: Sequence[float]) -> Dict[str, float]:
+def percentile_summary(samples_ms):
     if not samples_ms:
         raise ValueError("No latency samples were collected")
     values = np.asarray(samples_ms, dtype=np.float64)
@@ -86,7 +82,7 @@ def percentile_summary(samples_ms: Sequence[float]) -> Dict[str, float]:
     }
 
 
-def print_summary(label: str, summary: Mapping[str, float]) -> None:
+def print_summary(label, summary):
     print(f"\n{label}")
     print(
         "  mean={mean_ms:.4f} ms ({mean_hz:.1f} Hz), "
@@ -99,7 +95,7 @@ def print_summary(label: str, summary: Mapping[str, float]) -> None:
     )
 
 
-def write_json(path: str | Path, value: Mapping[str, Any]) -> None:
+def write_json(path, value):
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")

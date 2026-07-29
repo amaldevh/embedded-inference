@@ -1,13 +1,9 @@
 """Benchmark the original PyTorch module for an apples-to-apples baseline."""
 
-#from __future__ import annotations
-
 import argparse
 import json
 import time
 from pathlib import Path
-from typing import List
-
 import torch
 
 from jetson_inference.common import (
@@ -19,7 +15,7 @@ from jetson_inference.common import (
 from jetson_inference.model_loader import load_module
 
 
-def main() -> None:
+def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", required=True, help="MODULE:SYMBOL")
     parser.add_argument("--checkpoint")
@@ -32,9 +28,7 @@ def main() -> None:
         metavar="NAME:D0,D1,...[:DTYPE]",
     )
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cuda")
-    parser.add_argument(
-        "--precision", choices=("fp32", "fp16"), default="fp32"
-    )
+    parser.add_argument("--precision", choices=("fp32", "fp16"), default="fp32")
     parser.add_argument("--warmup", type=int, default=200)
     parser.add_argument("--iterations", type=int, default=2000)
     parser.add_argument("--cpu-threads", type=int, default=1)
@@ -75,7 +69,7 @@ def main() -> None:
         if args.device == "cuda":
             torch.cuda.synchronize()
 
-        samples: List[float] = []
+        samples = []
         if args.device == "cuda":
             for _ in range(args.iterations):
                 start = torch.cuda.Event(enable_timing=True)

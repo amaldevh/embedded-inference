@@ -1,23 +1,19 @@
 """Build a device-specific TensorRT engine from an ONNX model."""
 
-#from __future__ import annotations
-
 import argparse
 import json
 from pathlib import Path
-from typing import Any, Dict, List
-
 import tensorrt as trt
 
 
 LOGGER = trt.Logger(trt.Logger.INFO)
 
 
-def _network_flag() -> int:
+def _network_flag():
     return 1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
 
 
-def _set_workspace(config: trt.IBuilderConfig, workspace_mib: int) -> None:
+def _set_workspace(config, workspace_mib):
     workspace_bytes = workspace_mib * 1024 * 1024
     if hasattr(config, "set_memory_pool_limit"):
         config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, workspace_bytes)
@@ -25,9 +21,7 @@ def _set_workspace(config: trt.IBuilderConfig, workspace_mib: int) -> None:
         config.max_workspace_size = workspace_bytes
 
 
-def _load_timing_cache(
-    config: trt.IBuilderConfig, cache_path: Path | None
-) -> None:
+def _load_timing_cache(config, cache_path):
     if cache_path is None or not hasattr(config, "create_timing_cache"):
         return
     cache_bytes = cache_path.read_bytes() if cache_path.exists() else b""
@@ -35,17 +29,15 @@ def _load_timing_cache(
     config.set_timing_cache(cache, ignore_mismatch=False)
 
 
-def _save_timing_cache(
-    config: trt.IBuilderConfig, cache_path: Path | None
-) -> None:
+def _save_timing_cache(config, cache_path):
     if cache_path is None or not hasattr(config, "get_timing_cache"):
         return
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     cache_path.write_bytes(bytes(config.get_timing_cache().serialize()))
 
 
-def _engine_metadata(engine: trt.ICudaEngine) -> Dict[str, Any]:
-    bindings: List[Dict[str, Any]] = []
+def _engine_metadata(engine):
+    bindings = []
     if hasattr(engine, "num_io_tensors"):
         for index in range(engine.num_io_tensors):
             name = engine.get_tensor_name(index)
@@ -79,7 +71,7 @@ def _engine_metadata(engine: trt.ICudaEngine) -> Dict[str, Any]:
     }
 
 
-def build_engine(args: argparse.Namespace) -> Path:
+def build_engine(args):
     onnx_path = Path(args.onnx)
     if not onnx_path.is_file():
         raise FileNotFoundError(onnx_path)
@@ -100,8 +92,7 @@ def build_engine(args: argparse.Namespace) -> Path:
     parser = trt.OnnxParser(network, LOGGER)
     if not parser.parse(onnx_path.read_bytes()):
         errors = "\n".join(
-            f"[{index}] {parser.get_error(index)}"
-            for index in range(parser.num_errors)
+            f"[{index}] {parser.get_error(index)}" for index in range(parser.num_errors)
         )
         raise RuntimeError(f"TensorRT could not parse {onnx_path}:\n{errors}")
 
@@ -124,11 +115,15 @@ def build_engine(args: argparse.Namespace) -> Path:
     precision = args.precision.lower()
     if precision == "fp16":
         if not builder.platform_has_fast_fp16:
-            raise RuntimeError("This TensorRT platform does not report fast FP16 support")
+            raise RuntimeError(
+                "This TensorRT platform does not report fast FP16 support"
+            )
         config.set_flag(trt.BuilderFlag.FP16)
     elif precision == "int8":
         if not builder.platform_has_fast_int8:
-            raise RuntimeError("This TensorRT platform does not report fast INT8 support")
+            raise RuntimeError(
+                "This TensorRT platform does not report fast INT8 support"
+            )
         config.set_flag(trt.BuilderFlag.INT8)
         print(
             "INT8 selected: the ONNX graph must contain explicit Q/DQ quantization "
@@ -158,14 +153,12 @@ def build_engine(args: argparse.Namespace) -> Path:
     metadata_path.write_text(
         json.dumps(_engine_metadata(engine), indent=2) + "\n", encoding="utf-8"
     )
-    print(
-        f"Saved {destination} ({destination.stat().st_size / (1024 * 1024):.2f} MiB)"
-    )
+    print(f"Saved {destination} ({destination.stat().st_size / (1024 * 1024):.2f} MiB)")
     print(f"Saved binding metadata to {metadata_path}")
     return destination
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--onnx", required=True, help="Fixed-shape ONNX model")
     parser.add_argument("--output", required=True, help="Destination .engine file")
@@ -195,7 +188,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> None:
+def main():
     build_engine(build_parser().parse_args())
 
 

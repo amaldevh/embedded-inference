@@ -1,23 +1,19 @@
 """Export an arbitrary torch.nn.Module to a fixed-shape ONNX graph."""
 
-##from __future__ import annotations
-
 import argparse
 import inspect
 from pathlib import Path
-from typing import Any, Dict, List
-
 import torch
 
 from .common import parse_input_spec, parse_json_object
 from .model_loader import load_module
 
 
-def _flatten_outputs(value: Any) -> List[torch.Tensor]:
+def _flatten_outputs(value):
     if isinstance(value, torch.Tensor):
         return [value]
     if isinstance(value, dict):
-        flattened: List[torch.Tensor] = []
+        flattened = []
         for item in value.values():
             flattened.extend(_flatten_outputs(item))
         return flattened
@@ -32,7 +28,7 @@ def _flatten_outputs(value: Any) -> List[torch.Tensor]:
     )
 
 
-def export_model(args: argparse.Namespace) -> Path:
+def export_model(args):
     parsed_inputs = [parse_input_spec(value) for value in args.input]
     input_names = [name for name, _, _ in parsed_inputs]
     if len(set(input_names)) != len(input_names):
@@ -68,7 +64,7 @@ def export_model(args: argparse.Namespace) -> Path:
 
     destination = Path(args.output)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    export_kwargs: Dict[str, Any] = {
+    export_kwargs = {
         "input_names": input_names,
         "output_names": output_names,
         "opset_version": args.opset,
@@ -98,7 +94,7 @@ def export_model(args: argparse.Namespace) -> Path:
     return destination
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--model",
@@ -144,7 +140,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> None:
+def main():
     export_model(build_parser().parse_args())
 
 

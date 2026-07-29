@@ -1,17 +1,13 @@
 """Load a user-supplied torch.nn.Module without coupling to its source tree."""
 
-#from __future__ import annotations
-
 import inspect
 from pathlib import Path
-from typing import Any, Mapping, Optional
-
 import torch
 
 from .common import import_symbol
 
 
-def _torch_load(path: str | Path, map_location: str) -> Any:
+def _torch_load(path, map_location):
     # ``weights_only`` did not exist in the PyTorch releases commonly used with
     # JetPack 5. Newer versions default to weights-only loading, which cannot load
     # a serialized Module. A checkpoint is pickle data: load only trusted files.
@@ -22,13 +18,13 @@ def _torch_load(path: str | Path, map_location: str) -> Any:
 
 
 def load_module(
-    model_spec: Optional[str],
-    checkpoint: Optional[str],
-    factory_kwargs: Optional[Mapping[str, Any]] = None,
-    checkpoint_key: Optional[str] = None,
-    strict: bool = True,
-    device: str = "cpu",
-) -> torch.nn.Module:
+    model_spec,
+    checkpoint,
+    factory_kwargs=None,
+    checkpoint_key=None,
+    strict=True,
+    device="cpu",
+):
     """Load a module factory and/or checkpoint.
 
     ``model_spec`` points to a module instance, Module class, or zero-argument
@@ -36,7 +32,7 @@ def load_module(
     serialized Module, a raw state_dict, or a dict containing a state_dict.
     """
     factory_kwargs = dict(factory_kwargs or {})
-    loaded: Any = None
+    loaded = None
     if checkpoint:
         loaded = _torch_load(checkpoint, map_location=device)
 

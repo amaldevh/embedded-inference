@@ -1,17 +1,13 @@
 """Run one or more inferences with a serialized TensorRT engine."""
 
-#from __future__ import annotations
-
 import argparse
-from typing import Dict
-
 import numpy as np
 import torch
 
 from .runtime import TensorRTRunner
 
 
-def _random_input(shape: tuple[int, ...], dtype: torch.dtype) -> torch.Tensor:
+def _random_input(shape, dtype):
     value = torch.empty(shape, dtype=dtype, pin_memory=True)
     if dtype.is_floating_point:
         return value.normal_()
@@ -20,7 +16,7 @@ def _random_input(shape: tuple[int, ...], dtype: torch.dtype) -> torch.Tensor:
     return value.zero_()
 
 
-def main() -> None:
+def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", required=True)
     parser.add_argument(
@@ -42,7 +38,7 @@ def main() -> None:
     print(runner.describe())
     if args.input_npz:
         with np.load(args.input_npz) as archive:
-            inputs: Dict[str, torch.Tensor | np.ndarray] = {
+            inputs = {
                 name: np.ascontiguousarray(archive[name]) for name in archive.files
             }
     else:
