@@ -111,10 +111,11 @@ class Streamer:
                 raise RuntimeError(
                     "Quanser send_double_array returned {}".format(result)
                 )
+            # Older QDrone/QUARC Python releases return 0 on a successful
+            # blocking flush, while newer releases document 1. Both releases
+            # raise StreamError for a blocking flush failure.
             result = self.stream.flush()
-            if result != 1:
-                if result == 0:
-                    raise ConnectionError("Quanser stream closed while flushing")
+            if result is not None and result < 0:
                 raise RuntimeError("Quanser stream flush returned {}".format(result))
         return self.send_size
 

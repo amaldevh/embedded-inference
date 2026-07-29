@@ -19,7 +19,7 @@ class FakeConnection:
         return 1
 
     def flush(self):
-        return 1
+        return 0
 
     def shutdown(self):
         self.shutdown_called = True

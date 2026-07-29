@@ -9,7 +9,7 @@ class FakeClientStream:
         received=None,
         receive_result=1,
         send_result=1,
-        flush_result=1,
+        flush_result=0,
     ):
         self.received = np.asarray(
             np.full(6, -1.0) if received is None else received,
@@ -100,6 +100,26 @@ def test_receive_reports_peer_disconnect():
     try:
         with pytest.raises(EOFError, match="closed by the peer"):
             client.receive()
+    finally:
+        client.close()
+
+
+def test_flush_accepts_old_and_new_quanser_success_values():
+    for flush_result in (0, 1):
+        client = make_client(FakeClientStream(flush_result=flush_result))
+        try:
+            assert client.send(np.ones(5)) == 5
+        finally:
+            client.close()
+
+
+def test_negative_flush_result_is_rejected():
+    import pytest
+
+    client = make_client(FakeClientStream(flush_result=-1))
+    try:
+        with pytest.raises(RuntimeError, match="flush returned"):
+            client.send(np.ones(5))
     finally:
         client.close()
 
