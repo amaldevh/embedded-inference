@@ -1,7 +1,9 @@
 """Load a user-supplied torch.nn.Module without coupling to its source tree."""
 
 import inspect
+from collections.abc import Mapping
 from pathlib import Path
+
 import torch
 
 from .common import import_symbol
