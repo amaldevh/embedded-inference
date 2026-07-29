@@ -16,7 +16,8 @@ class Streamer:
         else:
             self.stream.listen(address, False)
             self.client_conn = self.stream.accept(send_bytes_size, receive_bytes_size)
-        breakpoint()
+        import pdb
+        pdb.set_trace()
         self.recv = np.zeros((double_receive_size))
 
     def send(self, data):
