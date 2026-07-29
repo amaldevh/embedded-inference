@@ -65,14 +65,14 @@ def end_to_end_latency(
 
     samples = []
     for _ in range(iterations):
-        start = time.perf_counter_ns()
+        start = time.perf_counter()
         runner.infer(
             inputs,
             return_cpu=True,
             synchronize=True,
             use_cuda_graph=use_cuda_graph,
         )
-        samples.append((time.perf_counter_ns() - start) / 1e6)
+        samples.append((time.perf_counter() - start) *1e3)
     return percentile_summary(samples)
 
 
