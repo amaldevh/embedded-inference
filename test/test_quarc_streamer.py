@@ -3,7 +3,7 @@ from threading import Thread
 import numpy as np
 
 if __name__ == "__main__":
-    streamer = Streamer("tcpip://localhost:5001", 5, 6, Server.CLIENT)
+    streamer = Streamer("tcpip://localhost:5001", 5, 6, Streamer.CLIENT)
     for i in range(10):
         streamer.receive(6)
         print("Streamer Got: ", streamer.recv)
