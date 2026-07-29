@@ -129,8 +129,8 @@ def build_parser():
     parser.add_argument(
         "--opset",
         type=int,
-        default=17,
-        help="ONNX opset (17 is compatible with TensorRT 8.5)",
+        default=13,
+        help="ONNX opset (default: 13, compatible with JetPack 4.6/TensorRT 8.2)",
     )
     parser.add_argument(
         "--dynamo",
