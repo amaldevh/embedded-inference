@@ -172,7 +172,7 @@ def test_nonpositive_sizes_are_rejected():
 def run_client(address="tcpip://localhost:5001", iterations=10):
     with Streamer(address, 5, 6, Streamer.CLIENT) as client:
         for _ in range(iterations):
-            request = np.ones(5)
+            request = np.ones(5)*_
             print("Client sending:", request)
             client.send(request)
             received = client.receive()

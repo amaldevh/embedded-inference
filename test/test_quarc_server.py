@@ -74,7 +74,7 @@ def run_server(address="tcpip://localhost:5001", iterations=10):
         for _ in range(iterations):
             received = server.receive()
             print("Server got:", received)
-            reply = np.full(6, -1.0)
+            reply = np.full(6, -1.0*_)
             print("Server sending:", reply)
             server.send(reply)
 
