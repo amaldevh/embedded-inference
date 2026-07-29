@@ -14,7 +14,7 @@ class Streamer:
             self.stream.connect(address, False,
             send_bytes_size, receive_bytes_size)
         else:
-            self.stream.listen(additional, False)
+            self.stream.listen(address, False)
             self.client_conn = self.stream.accept(send_bytes_size, receive_bytes_size)
         self.recv = np.zeros((double_receive_size))
 
