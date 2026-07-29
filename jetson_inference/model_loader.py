@@ -1,6 +1,6 @@
 """Load a user-supplied torch.nn.Module without coupling to its source tree."""
 
-from __future__ import annotations
+#from __future__ import annotations
 
 import inspect
 from pathlib import Path

@@ -1,6 +1,6 @@
 """Run one or more inferences with a serialized TensorRT engine."""
 
-from __future__ import annotations
+#from __future__ import annotations
 
 import argparse
 from typing import Dict

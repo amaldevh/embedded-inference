@@ -1,6 +1,6 @@
 """Build a device-specific TensorRT engine from an ONNX model."""
 
-from __future__ import annotations
+#from __future__ import annotations
 
 import argparse
 import json

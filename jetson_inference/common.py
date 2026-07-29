@@ -1,6 +1,6 @@
 """Shared command-line and reporting utilities."""
 
-from __future__ import annotations
+#from __future__ import annotations
 
 import importlib
 import json

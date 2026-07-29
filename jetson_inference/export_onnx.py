@@ -1,6 +1,6 @@
 """Export an arbitrary torch.nn.Module to a fixed-shape ONNX graph."""
 
-from __future__ import annotations
+##from __future__ import annotations
 
 import argparse
 import inspect

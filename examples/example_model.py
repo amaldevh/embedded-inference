@@ -1,6 +1,6 @@
 """Small policy network used to smoke-test export and deployment."""
 
-from __future__ import annotations
+#from __future__ import annotations
 
 import torch
 

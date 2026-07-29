@@ -1,6 +1,6 @@
 """Benchmark TensorRT GPU-only and host-to-host serial inference latency."""
 
-from __future__ import annotations
+#from __future__ import annotations
 
 import argparse
 import json

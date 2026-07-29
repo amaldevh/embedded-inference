@@ -1,6 +1,6 @@
 """Benchmark the original PyTorch module for an apples-to-apples baseline."""
 
-from __future__ import annotations
+#from __future__ import annotations
 
 import argparse
 import json
