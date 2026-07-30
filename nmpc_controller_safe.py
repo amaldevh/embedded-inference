@@ -26,11 +26,9 @@ Important integration assumptions
   packets are stale or this controller reports an invalid solution.
 """
 
-from __future__ import annotations
-
-from dataclasses import dataclass, field
+from collections import namedtuple
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping, Optional, Sequence, Union
 import math
 import shutil
 import time
@@ -45,8 +43,6 @@ class AuxiliaryController:
     pass
 
 
-ArrayLike = Union[np.ndarray, Sequence[float]]
-
 PHYSICAL_STATE_DIM = 10
 CTBR_DIM = 4
 AUGMENTED_STATE_DIM = PHYSICAL_STATE_DIM + CTBR_DIM
@@ -54,7 +50,6 @@ CONTROL_DIM = 4
 PARAMETER_DIM = 8  # mass(1), gravity(3), reference quaternion(4)
 
 
-@dataclass
 class NMPCConfig:
     """Configuration and conservative commissioning limits.
 
@@ -62,70 +57,94 @@ class NMPCConfig:
     the thrust/rate/slew limits using measurements from the actual vehicle.
     """
 
-    control_dt: float = 0.02
-    horizon_steps: int = 10
+    def __init__(
+        self,
+        control_dt=0.02,
+        horizon_steps=10,
+        thrust_min=0.0,
+        thrust_max=20.0,
+        body_rate_max=None,
+        thrust_slew_max=30.0,
+        body_rate_slew_max=None,
+        velocity_max=None,
+        max_tilt_rad=math.radians(25.0),
+        position_weight=None,
+        velocity_weight=None,
+        attitude_weight=None,
+        ctbr_weight=None,
+        slew_weight=None,
+        terminal_weight_scale=2.0,
+        qp_tolerance=1e-6,
+        qp_max_iterations=50,
+        max_solver_wall_time_s=0.018,
+        max_state_age_s=0.060,
+        quaternion_stabilization_gain=1.0,
+        code_export_root=".",
+    ):
+        self.control_dt = control_dt
+        self.horizon_steps = horizon_steps
+        self.thrust_min = thrust_min
+        self.thrust_max = thrust_max
+        self.body_rate_max = (
+            np.array([1.5, 1.5, 1.0], dtype=float)
+            if body_rate_max is None
+            else body_rate_max
+        )
+        self.thrust_slew_max = thrust_slew_max
+        self.body_rate_slew_max = (
+            np.array([4.0, 4.0, 3.0], dtype=float)
+            if body_rate_slew_max is None
+            else body_rate_slew_max
+        )
+        self.velocity_max = (
+            np.array([3.0, 3.0, 2.0], dtype=float)
+            if velocity_max is None
+            else velocity_max
+        )
+        self.max_tilt_rad = max_tilt_rad
+        self.position_weight = (
+            np.array([25.0, 25.0, 35.0], dtype=float)
+            if position_weight is None
+            else position_weight
+        )
+        self.velocity_weight = (
+            np.array([10.0, 10.0, 15.0], dtype=float)
+            if velocity_weight is None
+            else velocity_weight
+        )
+        self.attitude_weight = (
+            np.array([12.0, 12.0, 6.0], dtype=float)
+            if attitude_weight is None
+            else attitude_weight
+        )
+        self.ctbr_weight = (
+            np.array([0.20, 0.80, 0.80, 0.50], dtype=float)
+            if ctbr_weight is None
+            else ctbr_weight
+        )
+        self.slew_weight = (
+            np.array([0.02, 0.08, 0.08, 0.05], dtype=float)
+            if slew_weight is None
+            else slew_weight
+        )
+        self.terminal_weight_scale = terminal_weight_scale
+        self.qp_tolerance = qp_tolerance
+        self.qp_max_iterations = qp_max_iterations
+        self.max_solver_wall_time_s = max_solver_wall_time_s
+        self.max_state_age_s = max_state_age_s
+        self.quaternion_stabilization_gain = quaternion_stabilization_gain
+        self.code_export_root = code_export_root
+        self.__post_init__()
 
-    thrust_min: float = 0.0
-    thrust_max: float = 20.0
-    body_rate_max: np.ndarray = field(
-        default_factory=lambda: np.array([1.5, 1.5, 1.0], dtype=float)
-    )
-
-    # Slew-rate limits. The OCP converts them to per-update delta bounds.
-    # At 50 Hz, 30 N/s permits 0.6 N per update and 4 rad/s^2 permits
-    # 0.08 rad/s per update.
-    thrust_slew_max: float = 30.0
-    body_rate_slew_max: np.ndarray = field(
-        default_factory=lambda: np.array([4.0, 4.0, 3.0], dtype=float)
-    )
-
-    velocity_max: np.ndarray = field(
-        default_factory=lambda: np.array([3.0, 3.0, 2.0], dtype=float)
-    )
-    max_tilt_rad: float = math.radians(25.0)
-
-    # NONLINEAR_LS weights. Attitude uses a 3D quaternion error, not raw
-    # quaternion components.
-    position_weight: np.ndarray = field(
-        default_factory=lambda: np.array([25.0, 25.0, 35.0], dtype=float)
-    )
-    velocity_weight: np.ndarray = field(
-        default_factory=lambda: np.array([10.0, 10.0, 15.0], dtype=float)
-    )
-    attitude_weight: np.ndarray = field(
-        default_factory=lambda: np.array([12.0, 12.0, 6.0], dtype=float)
-    )
-    ctbr_weight: np.ndarray = field(
-        default_factory=lambda: np.array([0.20, 0.80, 0.80, 0.50], dtype=float)
-    )
-    slew_weight: np.ndarray = field(
-        default_factory=lambda: np.array([0.02, 0.08, 0.08, 0.05], dtype=float)
-    )
-    terminal_weight_scale: float = 2.0
-
-    qp_tolerance: float = 1e-6
-    qp_max_iterations: int = 50
-    max_solver_wall_time_s: float = 0.018
-    max_state_age_s: float = 0.060
-
-    quaternion_stabilization_gain: float = 1.0
-    code_export_root: str = "."
-
-    def __post_init__(self) -> None:
+    def __post_init__(self):
         self.body_rate_max = _vector(self.body_rate_max, 3, "body_rate_max")
         self.body_rate_slew_max = _vector(
             self.body_rate_slew_max, 3, "body_rate_slew_max"
         )
         self.velocity_max = _vector(self.velocity_max, 3, "velocity_max")
-        self.position_weight = _vector(
-            self.position_weight, 3, "position_weight"
-        )
-        self.velocity_weight = _vector(
-            self.velocity_weight, 3, "velocity_weight"
-        )
-        self.attitude_weight = _vector(
-            self.attitude_weight, 3, "attitude_weight"
-        )
+        self.position_weight = _vector(self.position_weight, 3, "position_weight")
+        self.velocity_weight = _vector(self.velocity_weight, 3, "velocity_weight")
+        self.attitude_weight = _vector(self.attitude_weight, 3, "attitude_weight")
         self.ctbr_weight = _vector(self.ctbr_weight, 4, "ctbr_weight")
         self.slew_weight = _vector(self.slew_weight, 4, "slew_weight")
 
@@ -149,32 +168,31 @@ class NMPCConfig:
             raise ValueError("max_state_age_s cannot be negative")
 
 
-@dataclass(frozen=True)
-class ControlInfo:
-    """Diagnostic information for the most recent control call."""
-
-    valid: bool
-    solver_status: int
-    solver_time_s: float
-    wall_time_s: float
-    state_age_s: float
-    used_fallback: bool
-    reason: str
-
-
-@dataclass(frozen=True)
-class ReferenceTrajectory:
-    """Horizon references accepted by :meth:`calculate_control`.
-
-    states has shape (N+1, >=10) or can be a single state with shape (>=10,).
-    ctbr is optional and has shape (N+1, 4), (N, 4), or (4,).
-    """
-
-    states: np.ndarray
-    ctbr: Optional[np.ndarray] = None
+ControlInfo = namedtuple(
+    "ControlInfo",
+    (
+        "valid",
+        "solver_status",
+        "solver_time_s",
+        "wall_time_s",
+        "state_age_s",
+        "used_fallback",
+        "reason",
+    ),
+)
+ControlInfo.__doc__ = "Diagnostic information for the most recent control call."
 
 
-def _vector(value: ArrayLike, size: int, name: str) -> np.ndarray:
+ReferenceTrajectory = namedtuple("ReferenceTrajectory", ("states", "ctbr"))
+ReferenceTrajectory.__new__.__defaults__ = (None,)
+ReferenceTrajectory.__doc__ = """Horizon references accepted by calculate_control.
+
+states has shape (N+1, >=10) or can be a single state with shape (>=10,).
+ctbr is optional and has shape (N+1, 4), (N, 4), or (4,).
+"""
+
+
+def _vector(value, size, name):
     array = np.asarray(value, dtype=float).reshape(-1)
     if array.size != size:
         raise ValueError(f"{name} must contain {size} values, got {array.size}")
@@ -183,7 +201,7 @@ def _vector(value: ArrayLike, size: int, name: str) -> np.ndarray:
     return array.copy()
 
 
-def _normalize_quaternion_np(quaternion: ArrayLike) -> np.ndarray:
+def _normalize_quaternion_np(quaternion):
     quaternion = _vector(quaternion, 4, "quaternion")
     norm = float(np.linalg.norm(quaternion))
     if norm < 1e-8:
@@ -191,36 +209,44 @@ def _normalize_quaternion_np(quaternion: ArrayLike) -> np.ndarray:
     return quaternion / norm
 
 
-def _align_quaternion_np(quaternion: ArrayLike, anchor: ArrayLike) -> np.ndarray:
+def _align_quaternion_np(quaternion, anchor):
     quaternion = _normalize_quaternion_np(quaternion)
     anchor = _normalize_quaternion_np(anchor)
     return -quaternion if float(np.dot(quaternion, anchor)) < 0.0 else quaternion
 
 
-def _quat_product_ca(q1: ca.SX, q2: ca.SX) -> ca.SX:
+def _quat_product_ca(q1, q2):
     scalar = q1[0] * q2[0] - ca.dot(q1[1:4], q2[1:4])
-    vector = (
-        q1[0] * q2[1:4]
-        + q2[0] * q1[1:4]
-        + ca.cross(q1[1:4], q2[1:4])
-    )
+    vector = q1[0] * q2[1:4] + q2[0] * q1[1:4] + ca.cross(q1[1:4], q2[1:4])
     return ca.vertcat(scalar, vector)
 
 
-def _normalize_quaternion_ca(quaternion: ca.SX) -> ca.SX:
+def _normalize_quaternion_ca(quaternion):
     return quaternion / ca.sqrt(ca.sumsqr(quaternion) + 1e-12)
 
 
-def _rotation_matrix_ca(quaternion: ca.SX) -> ca.SX:
+def _rotation_matrix_ca(quaternion):
     qw, qx, qy, qz = quaternion[0], quaternion[1], quaternion[2], quaternion[3]
     return ca.vertcat(
-        ca.horzcat(1 - 2 * (qy * qy + qz * qz), 2 * (qx * qy - qw * qz), 2 * (qx * qz + qw * qy)),
-        ca.horzcat(2 * (qx * qy + qw * qz), 1 - 2 * (qx * qx + qz * qz), 2 * (qy * qz - qw * qx)),
-        ca.horzcat(2 * (qx * qz - qw * qy), 2 * (qy * qz + qw * qx), 1 - 2 * (qx * qx + qy * qy)),
+        ca.horzcat(
+            1 - 2 * (qy * qy + qz * qz),
+            2 * (qx * qy - qw * qz),
+            2 * (qx * qz + qw * qy),
+        ),
+        ca.horzcat(
+            2 * (qx * qy + qw * qz),
+            1 - 2 * (qx * qx + qz * qz),
+            2 * (qy * qz - qw * qx),
+        ),
+        ca.horzcat(
+            2 * (qx * qz - qw * qy),
+            2 * (qy * qz + qw * qx),
+            1 - 2 * (qx * qx + qy * qy),
+        ),
     )
 
 
-def _attitude_error_ca(quaternion: ca.SX, reference_quaternion: ca.SX) -> ca.SX:
+def _attitude_error_ca(quaternion, reference_quaternion):
     """Return a local 3D quaternion error.
 
     Runtime code aligns reference quaternion signs with the measured quaternion,
@@ -234,7 +260,7 @@ def _attitude_error_ca(quaternion: ca.SX, reference_quaternion: ca.SX) -> ca.SX:
     return 2.0 * q_error[1:4]
 
 
-def _build_model(config: NMPCConfig, model_name: str) -> at.AcadosModel:
+def _build_model(config, model_name):
     """Build a discrete-time CTBR model with exact zero-order-hold semantics.
 
     The augmented state stores the previously issued CTBR command. The current
@@ -259,7 +285,7 @@ def _build_model(config: NMPCConfig, model_name: str) -> at.AcadosModel:
     gravity = p[1:4]
     reference_quaternion = p[4:8]
 
-    def physical_dynamics(state_: ca.SX, ctbr_: ca.SX) -> ca.SX:
+    def physical_dynamics(state_, ctbr_):
         velocity_ = state_[3:6]
         quaternion_ = state_[6:10]
         quaternion_normalized_ = _normalize_quaternion_ca(quaternion_)
@@ -267,9 +293,7 @@ def _build_model(config: NMPCConfig, model_name: str) -> at.AcadosModel:
         thrust_ = ctbr_[0]
         body_rates_ = ctbr_[1:4]
 
-        acceleration_ = (
-            rotation_ @ ca.vertcat(0.0, 0.0, thrust_) / mass + gravity
-        )
+        acceleration_ = rotation_ @ ca.vertcat(0.0, 0.0, thrust_) / mass + gravity
         quaternion_derivative_ = 0.5 * _quat_product_ca(
             quaternion_normalized_, ca.vertcat(0.0, body_rates_)
         )
@@ -324,12 +348,12 @@ def _build_model(config: NMPCConfig, model_name: str) -> at.AcadosModel:
 
 
 def build_acados_ocp_solver(
-    mass: float,
-    gravity: ArrayLike,
-    config: NMPCConfig,
-    model_name: str,
-    output_dir: Union[str, Path],
-) -> at.AcadosOcpSolver:
+    mass,
+    gravity,
+    config,
+    model_name,
+    output_dir,
+):
     """Create and compile the safety-oriented acados OCP solver."""
 
     if mass <= 0.0 or not np.isfinite(mass):
@@ -357,14 +381,17 @@ def build_acados_ocp_solver(
             config.slew_weight,
         ]
     )
-    terminal_weights = np.concatenate(
-        [
-            config.position_weight,
-            config.velocity_weight,
-            config.attitude_weight,
-            config.ctbr_weight,
-        ]
-    ) * config.terminal_weight_scale
+    terminal_weights = (
+        np.concatenate(
+            [
+                config.position_weight,
+                config.velocity_weight,
+                config.attitude_weight,
+                config.ctbr_weight,
+            ]
+        )
+        * config.terminal_weight_scale
+    )
 
     ocp.cost.cost_type = "NONLINEAR_LS"
     ocp.cost.cost_type_e = "NONLINEAR_LS"
@@ -381,12 +408,8 @@ def build_acados_ocp_solver(
 
     # OCP inputs are physical CTBR commands.
     ocp.constraints.idxbu = np.arange(CONTROL_DIM, dtype=int)
-    ocp.constraints.lbu = np.concatenate(
-        [[config.thrust_min], -config.body_rate_max]
-    )
-    ocp.constraints.ubu = np.concatenate(
-        [[config.thrust_max], config.body_rate_max]
-    )
+    ocp.constraints.lbu = np.concatenate([[config.thrust_min], -config.body_rate_max])
+    ocp.constraints.ubu = np.concatenate([[config.thrust_max], config.body_rate_max])
 
     # Bound physical velocity and the CTBR command states at shooting nodes.
     state_bound_indices = np.array([3, 4, 5, 10, 11, 12, 13], dtype=int)
@@ -424,9 +447,7 @@ def build_acados_ocp_solver(
     ocp.constraints.lh_e = np.array([min_cos_tilt])
     ocp.constraints.uh_e = np.array([1.0])
 
-    default_parameter = np.concatenate(
-        [[mass], gravity, [1.0, 0.0, 0.0, 0.0]]
-    )
+    default_parameter = np.concatenate([[mass], gravity, [1.0, 0.0, 0.0, 0.0]])
     ocp.parameter_values = default_parameter
 
     ocp.solver_options.N_horizon = config.horizon_steps
@@ -462,10 +483,10 @@ class NMPCController(AuxiliaryController):
 
     def __init__(
         self,
-        mass: float,
-        gravity: ArrayLike,
-        config: Optional[NMPCConfig] = None,
-    ) -> None:
+        mass,
+        gravity,
+        config=None,
+    ):
         super().__init__()
         self.mass = float(mass)
         self.gravity = _vector(gravity, 3, "gravity")
@@ -475,8 +496,7 @@ class NMPCController(AuxiliaryController):
         NMPCController._next_id += 1
         model_name = f"qdrone2_ctbr_nmpc_{self.instance_id}"
         output_dir = (
-            Path(self.config.code_export_root)
-            / f"c_generated_code_{model_name}"
+            Path(self.config.code_export_root) / f"c_generated_code_{model_name}"
         )
 
         self.ocp_solver = build_acados_ocp_solver(
@@ -495,8 +515,8 @@ class NMPCController(AuxiliaryController):
         self.last_command = self.hover_command.copy()
         self.last_valid_command = self.hover_command.copy()
         self.last_state_quaternion = np.array([1.0, 0.0, 0.0, 0.0])
-        self.previous_x_solution: Optional[np.ndarray] = None
-        self.previous_u_solution: Optional[np.ndarray] = None
+        self.previous_x_solution = None
+        self.previous_u_solution = None
         self.last_info = ControlInfo(
             valid=False,
             solver_status=5,
@@ -509,19 +529,15 @@ class NMPCController(AuxiliaryController):
 
     def calculate_control(
         self,
-        state: ArrayLike,
-        state_dot: Optional[ArrayLike],
-        desired_state: Union[
-            ArrayLike,
-            ReferenceTrajectory,
-            Mapping[str, Any],
-        ],
+        state,
+        state_dot,
+        desired_state,
         *,
-        desired_ctbr: Optional[ArrayLike] = None,
-        state_age_s: float = 0.0,
-        fallback_control: Optional[ArrayLike] = None,
-        return_info: bool = False,
-    ) -> Union[np.ndarray, tuple[np.ndarray, ControlInfo]]:
+        desired_ctbr=None,
+        state_age_s=0.0,
+        fallback_control=None,
+        return_info=False,
+    ):
         """Calculate a bounded CTBR command.
 
         Parameters
@@ -591,9 +607,7 @@ class NMPCController(AuxiliaryController):
             )
             self._warm_start(compensated_state)
 
-            x0_augmented = np.concatenate(
-                [compensated_state, self.last_command]
-            )
+            x0_augmented = np.concatenate([compensated_state, self.last_command])
             self._constraints_set(0, "lbx", x0_augmented)
             self._constraints_set(0, "ubx", x0_augmented)
 
@@ -625,9 +639,7 @@ class NMPCController(AuxiliaryController):
                     return_info=return_info,
                 )
 
-            candidate = np.asarray(
-                self.ocp_solver.get(0, "u"), dtype=float
-            ).reshape(-1)
+            candidate = np.asarray(self.ocp_solver.get(0, "u"), dtype=float).reshape(-1)
             if candidate.size != CTBR_DIM:
                 raise RuntimeError(
                     "acados returned an unexpected CTBR command dimension"
@@ -662,7 +674,7 @@ class NMPCController(AuxiliaryController):
                 return_info=return_info,
             )
 
-    def reset(self, initial_command: Optional[ArrayLike] = None) -> None:
+    def reset(self, initial_command=None):
         """Reset warm-start memory and the held CTBR command."""
 
         command = self.hover_command if initial_command is None else initial_command
@@ -687,12 +699,10 @@ class NMPCController(AuxiliaryController):
             reason="controller reset",
         )
 
-    def _validate_physical_state(self, state: ArrayLike) -> np.ndarray:
+    def _validate_physical_state(self, state):
         state = np.asarray(state, dtype=float).reshape(-1)
         if state.size < PHYSICAL_STATE_DIM:
-            raise ValueError(
-                f"state must have at least {PHYSICAL_STATE_DIM} values"
-            )
+            raise ValueError(f"state must have at least {PHYSICAL_STATE_DIM} values")
         state = state[:PHYSICAL_STATE_DIM].copy()
         if not np.all(np.isfinite(state)):
             raise ValueError("state contains NaN or infinity")
@@ -701,15 +711,11 @@ class NMPCController(AuxiliaryController):
 
     def _prepare_references(
         self,
-        desired_state: Union[
-            ArrayLike,
-            ReferenceTrajectory,
-            Mapping[str, Any],
-        ],
-        desired_ctbr: Optional[ArrayLike],
-        quaternion_anchor: np.ndarray,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        mapping_ctbr: Optional[ArrayLike] = None
+        desired_state,
+        desired_ctbr,
+        quaternion_anchor,
+    ):
+        mapping_ctbr = None
         if isinstance(desired_state, ReferenceTrajectory):
             state_data = desired_state.states
             mapping_ctbr = desired_state.ctbr
@@ -779,7 +785,7 @@ class NMPCController(AuxiliaryController):
         return reference, ctbr_reference
 
     @staticmethod
-    def _pad_or_truncate(array: np.ndarray, rows: int) -> np.ndarray:
+    def _pad_or_truncate(array, rows):
         if array.shape[0] == 0:
             raise ValueError("reference trajectory cannot be empty")
         if array.shape[0] >= rows:
@@ -789,10 +795,10 @@ class NMPCController(AuxiliaryController):
 
     def _set_problem_data(
         self,
-        state: np.ndarray,
-        state_reference: np.ndarray,
-        ctbr_reference: np.ndarray,
-    ) -> None:
+        state,
+        state_reference,
+        ctbr_reference,
+    ):
         zero_attitude_error = np.zeros(3)
         zero_slew = np.zeros(4)
 
@@ -826,7 +832,7 @@ class NMPCController(AuxiliaryController):
         )
         self._cost_set(self.N_horizon, "yref", terminal_y_ref)
 
-    def _warm_start(self, state: np.ndarray) -> None:
+    def _warm_start(self, state):
         if self.previous_x_solution is None or self.previous_u_solution is None:
             x_guess = np.concatenate([state, self.last_command])
             for stage in range(self.N_horizon + 1):
@@ -838,20 +844,12 @@ class NMPCController(AuxiliaryController):
         for stage in range(self.N_horizon):
             source_x = min(stage + 1, self.N_horizon)
             source_u = min(stage + 1, self.N_horizon - 1)
-            self.ocp_solver.set(
-                stage, "x", self.previous_x_solution[source_x]
-            )
-            self.ocp_solver.set(
-                stage, "u", self.previous_u_solution[source_u]
-            )
-        self.ocp_solver.set(
-            self.N_horizon, "x", self.previous_x_solution[-1]
-        )
+            self.ocp_solver.set(stage, "x", self.previous_x_solution[source_x])
+            self.ocp_solver.set(stage, "u", self.previous_u_solution[source_u])
+        self.ocp_solver.set(self.N_horizon, "x", self.previous_x_solution[-1])
 
-    def _store_solution(self) -> None:
-        x_solution = np.zeros(
-            (self.N_horizon + 1, AUGMENTED_STATE_DIM), dtype=float
-        )
+    def _store_solution(self):
+        x_solution = np.zeros((self.N_horizon + 1, AUGMENTED_STATE_DIM), dtype=float)
         u_solution = np.zeros((self.N_horizon, CONTROL_DIM), dtype=float)
         for stage in range(self.N_horizon):
             x_solution[stage] = np.asarray(
@@ -868,10 +866,10 @@ class NMPCController(AuxiliaryController):
 
     def _compensate_state_delay(
         self,
-        state: np.ndarray,
-        state_dot: Optional[ArrayLike],
-        age: float,
-    ) -> np.ndarray:
+        state,
+        state_dot,
+        age,
+    ):
         if age <= 0.0:
             return state.copy()
 
@@ -881,9 +879,7 @@ class NMPCController(AuxiliaryController):
                 derivative = derivative[:PHYSICAL_STATE_DIM]
                 if np.all(np.isfinite(derivative)):
                     predicted = state + age * derivative
-                    predicted[6:10] = _align_quaternion_np(
-                        predicted[6:10], state[6:10]
-                    )
+                    predicted[6:10] = _align_quaternion_np(predicted[6:10], state[6:10])
                     return predicted
 
         # Fall back to RK4 propagation with the last held CTBR command.
@@ -898,18 +894,12 @@ class NMPCController(AuxiliaryController):
             k3 = self._physical_dynamics_np(
                 predicted + 0.5 * dt * k2, self.last_command
             )
-            k4 = self._physical_dynamics_np(
-                predicted + dt * k3, self.last_command
-            )
+            k4 = self._physical_dynamics_np(predicted + dt * k3, self.last_command)
             predicted += dt * (k1 + 2 * k2 + 2 * k3 + k4) / 6.0
-            predicted[6:10] = _align_quaternion_np(
-                predicted[6:10], state[6:10]
-            )
+            predicted[6:10] = _align_quaternion_np(predicted[6:10], state[6:10])
         return predicted
 
-    def _physical_dynamics_np(
-        self, state: np.ndarray, ctbr: np.ndarray
-    ) -> np.ndarray:
+    def _physical_dynamics_np(self, state, ctbr):
         quaternion = _normalize_quaternion_np(state[6:10])
         qw, qx, qy, qz = quaternion
         rotation = np.array(
@@ -944,27 +934,23 @@ class NMPCController(AuxiliaryController):
         return np.concatenate([state[3:6], acceleration, quaternion_derivative])
 
     @staticmethod
-    def _quat_product_np(q1: np.ndarray, q2: np.ndarray) -> np.ndarray:
+    def _quat_product_np(q1, q2):
         return np.concatenate(
             [
                 [q1[0] * q2[0] - np.dot(q1[1:4], q2[1:4])],
-                q1[0] * q2[1:4]
-                + q2[0] * q1[1:4]
-                + np.cross(q1[1:4], q2[1:4]),
+                q1[0] * q2[1:4] + q2[0] * q1[1:4] + np.cross(q1[1:4], q2[1:4]),
             ]
         )
 
-    def _clip_command(self, command: ArrayLike) -> np.ndarray:
+    def _clip_command(self, command):
         command = _vector(command, CTBR_DIM, "CTBR command")
-        command[0] = np.clip(
-            command[0], self.config.thrust_min, self.config.thrust_max
-        )
+        command[0] = np.clip(command[0], self.config.thrust_min, self.config.thrust_max)
         command[1:4] = np.clip(
             command[1:4], -self.config.body_rate_max, self.config.body_rate_max
         )
         return command
 
-    def _apply_output_safety(self, candidate: ArrayLike) -> np.ndarray:
+    def _apply_output_safety(self, candidate):
         candidate = self._clip_command(candidate)
         maximum_delta = self.config.control_dt * np.concatenate(
             [[self.config.thrust_slew_max], self.config.body_rate_slew_max]
@@ -978,15 +964,15 @@ class NMPCController(AuxiliaryController):
 
     def _fallback_result(
         self,
-        fallback_control: Optional[ArrayLike],
+        fallback_control,
         *,
-        status: int,
-        solver_time_s: float,
-        wall_start: float,
-        state_age_s: float,
-        reason: str,
-        return_info: bool,
-    ) -> Union[np.ndarray, tuple[np.ndarray, ControlInfo]]:
+        status,
+        solver_time_s,
+        wall_start,
+        state_age_s,
+        reason,
+        return_info,
+    ):
         try:
             target = (
                 self.last_valid_command
@@ -1011,34 +997,34 @@ class NMPCController(AuxiliaryController):
         return (command.copy(), self.last_info) if return_info else command.copy()
 
     @staticmethod
-    def _safe_nonnegative_float(value: Any) -> float:
+    def _safe_nonnegative_float(value):
         try:
             number = float(value)
         except (TypeError, ValueError):
             return 0.0
         return max(number, 0.0) if np.isfinite(number) else 0.0
 
-    def _get_solver_time(self, default: float) -> float:
+    def _get_solver_time(self, default):
         try:
             value = float(self.ocp_solver.get_stats("time_tot"))
             return value if np.isfinite(value) and value >= 0.0 else default
         except Exception:
             return default
 
-    def _constraints_set(self, stage: int, field: str, value: np.ndarray) -> None:
+    def _constraints_set(self, stage, field, value):
         if hasattr(self.ocp_solver, "constraints_set"):
             self.ocp_solver.constraints_set(stage, field, value)
         else:
             self.ocp_solver.set(stage, field, value)
 
-    def _cost_set(self, stage: int, field: str, value: np.ndarray) -> None:
+    def _cost_set(self, stage, field, value):
         if hasattr(self.ocp_solver, "cost_set"):
             self.ocp_solver.cost_set(stage, field, value)
         else:
             self.ocp_solver.set(stage, field, value)
 
 
-def make_controller() -> NMPCController:
+def make_controller():
     """Factory retaining the original project entry point."""
 
     return NMPCController(1.54, np.array([0.0, 0.0, -9.81]))

@@ -1,7 +1,7 @@
 import os
 import sys
 sys.path.append(os.path.dirname(__file__)+"/..")
-from nmpc_controller import NMPCController
+from nmpc_controller_safe import NMPCController
 import time 
 import numpy as np 
 
