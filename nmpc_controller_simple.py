@@ -67,8 +67,8 @@ def build_solver(mass, gravity, output_dir, model_name):
 
     # y = [state, control]. This is linear, so do not use NONLINEAR_LS.
     ny = NX + NU
-    ocp.cost.cost_type = "LINEAR_LS"
-    ocp.cost.cost_type_e = "LINEAR_LS"
+    ocp.cost.cost_type = "NONLINEAR_LS"
+    ocp.cost.cost_type_e = "NONLINEAR_LS"
     ocp.cost.Vx = np.zeros((ny, NX))
     ocp.cost.Vx[:NX] = np.eye(NX)
     ocp.cost.Vu = np.zeros((ny, NU))
@@ -91,16 +91,17 @@ def build_solver(mass, gravity, output_dir, model_name):
 
     ocp.constraints.idxbu = np.arange(NU)
     ocp.constraints.lbu = np.array([0.0, -1.0, -1.3, -0.25])
-    ocp.constraints.ubu = np.array([20.0, 1.0, 1.3, 0.25])
+    ocp.constraints.ubu = np.array([30.0, 1.0, 1.3, 0.25])
     ocp.constraints.x0 = np.array([0, 0, 0, 0, 0, 0, 1, 0, 0, 0], dtype=float)
 
     ocp.solver_options.N_horizon = N
     ocp.dims.N = N
-    ocp.solver_options.tf = N * DT
+    ocp.solver_options.tf = N * DT*3
     ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
     ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
     ocp.solver_options.integrator_type = "ERK"
     ocp.solver_options.nlp_solver_type = "SQP_RTI"
+    ocp.solver_options.globalization = "MERIT_BACKTRACKING"
     ocp.solver_options.qp_solver_iter_max = 20
     ocp.solver_options.qp_tol = 1e-4
     ocp.solver_options.print_level = 0
@@ -122,7 +123,7 @@ class NMPCController(AuxiliaryController):
         ])
         self.last_u = self.u_hover.copy()
         self.u_min = np.array([0.0, -1.0, -1.3, -0.25])
-        self.u_max = np.array([20.0, 1.0, 1.3, 0.25])
+        self.u_max = np.array([30.0, 1.0, 1.3, 0.25])
 
         i = NMPCController._next_id
         NMPCController._next_id += 1

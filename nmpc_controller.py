@@ -123,17 +123,17 @@ def acados_ocp_solver(mass, gravity, output_dir="./c_generated_code_ocp"):
     ocp.cost.yref_e = np.zeros((ny_e,))
 
     # set constraints
-    ocp.constraints.lbu = np.array([0.0, -3.0, -3.0, -3.0])
-    ocp.constraints.ubu = np.array([+20.0, 3.0, 3.0, 3.0])
+    ocp.constraints.lbu = np.array([0.0, -1.0, -1.3, -0.25])
+    ocp.constraints.ubu = np.array([30.0, 1.0, 1.3, 0.25])
     # If using solve_for_x0, need to set initial condition constraints
     ocp.constraints.x0 = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
     # Indices where control bounds are applied (here all controls)
     ocp.constraints.idxbu = np.array([0, 1, 2, 3])
 
     # set prediction horizon
-    ocp.solver_options.N_horizon = 10
-    ocp.dims.N = 10
-    ocp.solver_options.tf = 1000e-3 / 5  # 0.2 seconds horizon
+    ocp.solver_options.N_horizon = 20 # 10
+    ocp.dims.N = 20
+    ocp.solver_options.tf = 2e-1 #1000e-3*2 / 5  # 0.2 seconds horizon
     ocp.solver_options.qp_solver_iter_max = 50
     # set ocp options
     ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
