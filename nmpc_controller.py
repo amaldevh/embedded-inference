@@ -101,7 +101,7 @@ def acados_ocp_solver(mass, gravity, output_dir="./c_generated_code_ocp"):
         [
             30.0,
             30.0,
-            30.0,
+            60.0,
             15.0,
             15.0,
             15.0,
@@ -123,8 +123,8 @@ def acados_ocp_solver(mass, gravity, output_dir="./c_generated_code_ocp"):
     ocp.cost.yref_e = np.zeros((ny_e,))
 
     # set constraints
-    ocp.constraints.lbu = np.array([0.0, -1.0, -1.3, -0.25])/2
-    ocp.constraints.ubu = np.array([30.0, 1.0, 1.3, 0.25])/2 + np.array((15, 0,0,0))
+    ocp.constraints.lbu = np.array([0.0, -1.0, -1.3, -1.0])/2
+    ocp.constraints.ubu = np.array([30.0, 1.0, 1.3, 1.0])/2 + np.array((15, 0,0,0))
     # If using solve_for_x0, need to set initial condition constraints
     ocp.constraints.x0 = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
     # Indices where control bounds are applied (here all controls)
