@@ -16,7 +16,7 @@ if __name__ == "__main__":
             state_state_des = client.receive()
 
             u = controller.calculate_control(state_state_des[:13], None,
-                 state_state_des[13:26])
+                 state_state_des[13:26].reshape(1, -1))
             u[0] = u[0] - 1.504*9.81
             client.send(u)
             print(state_state_des)
