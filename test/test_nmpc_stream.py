@@ -20,10 +20,10 @@ if __name__ == "__main__":
             u[0] = u[0] - 1.504*9.81
             client.send(u)
             print(state_state_des)
-            sleept = max(1.7e-2 - (time.perf_counter() - ti), 0.0)
+            # sleept = max(1.7e-2 - (time.perf_counter() - ti), 0.0)
             print("U: ",u," , t: ", sleept)
             print("Avg freq: ", i/(time.perf_counter() - ts))
-            time.sleep(sleept)
+            # time.sleep(sleept)
         tf = time.perf_counter()
     print("Total time: ", tf-ts)
     print("Avg. time per step: ", (tf-ts)/1000)
