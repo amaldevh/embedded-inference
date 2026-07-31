@@ -105,13 +105,13 @@ def acados_ocp_solver(mass, gravity, output_dir="./c_generated_code_ocp"):
             15.0,
             15.0,
             15.0,
-            0.5 / 16 * 16,
-            0.5 / 16 * 16,
-            0.5 / 16 * 16,
-            0.5 / 16 * 16,
+            0.5 *10,
+            0.5 *10,
+            0.5 *10,
+            0.5 *10,
         ]
     )
-    R_mat = np.diag([0.05 / 8, 0.1 / 2 * 2, 0.1 / 2 * 2, 0.1 / 2 * 2])
+    R_mat = np.diag([0.05 / 8, 0.1*10*2, 0.1*10*2, 0.1*10*2])
     ocp.cost.W = scipy.linalg.block_diag(Q_mat, R_mat)
     ocp.cost.W_e = Q_mat
 
@@ -123,17 +123,17 @@ def acados_ocp_solver(mass, gravity, output_dir="./c_generated_code_ocp"):
     ocp.cost.yref_e = np.zeros((ny_e,))
 
     # set constraints
-    ocp.constraints.lbu = np.array([0.0, -1.0, -1.3, -0.25])
-    ocp.constraints.ubu = np.array([30.0, 1.0, 1.3, 0.25])
+    ocp.constraints.lbu = np.array([0.0, -1.0, -1.3, -0.25])/2
+    ocp.constraints.ubu = np.array([30.0, 1.0, 1.3, 0.25])/2 + np.array((15, 0,0,0))
     # If using solve_for_x0, need to set initial condition constraints
     ocp.constraints.x0 = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
     # Indices where control bounds are applied (here all controls)
     ocp.constraints.idxbu = np.array([0, 1, 2, 3])
 
     # set prediction horizon
-    ocp.solver_options.N_horizon = 20 # 10
-    ocp.dims.N = 20
-    ocp.solver_options.tf = 2e-1 #1000e-3*2 / 5  # 0.2 seconds horizon
+    ocp.solver_options.N_horizon = 10 # 10
+    ocp.dims.N = 10
+    ocp.solver_options.tf = 2*1000e-3 / 5  # 0.2 seconds horizon
     ocp.solver_options.qp_solver_iter_max = 50
     # set ocp options
     ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
@@ -179,23 +179,23 @@ class NMPCController(AuxiliaryController):
         self.ocp_solver = ocp_solver
         self.N_horizon = N_horizon
 
-    def calculate_control(self, state, state_dot, desired_state):
+    def calculate_control(self, state, state_dot, desired_states):
         """Calculate thrust and moments using NMPC.
         Args:
             state (np.ndarray): Current state of the UAV.
             state_dot (np.ndarray): Current state derivative of the UAV.
-            desired_state (np.ndarray): Desired state of the UAV.
+            desired_state (np.ndarray): Desired states of the UAV, for N nodes.
         Returns:
             np.ndarray: Calculated thrust and moments.
         """
         # Set initial state constraint
         # self.ocp_solver.set(0, "x", state)
         # # Set reference trajectory
-        des_state_ = desired_state[:10]
+        des_state_ = desired_states[:,:10]
         state_ = state[:10]
         for i in range(self.N_horizon):
-            self.ocp_solver.set(i, "yref", np.concatenate((des_state_, self.u_ref)))
-        self.ocp_solver.set(self.N_horizon, "yref", des_state_)
+            self.ocp_solver.set(i, "yref", np.concatenate((des_state_[i, :] , self.u_ref)))
+        self.ocp_solver.set(self.N_horizon, "yref", des_state_[self.N_horizon-1,:])
         # status = self.ocp_solver.solve()
         self.u_opt = self.ocp_solver.solve_for_x0(
             x0_bar=state[:10]
@@ -206,7 +206,7 @@ class NMPCController(AuxiliaryController):
 
 
 def make_controller():
-    return NMPCController(1.54, np.array((0, 0, -9.81)))
+    return NMPCController(1.504, np.array((0, 0, -9.81)))
 
 
 if __name__ == "__main__":
