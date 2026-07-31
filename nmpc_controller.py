@@ -179,6 +179,11 @@ class NMPCController(AuxiliaryController):
         self.ocp_solver = ocp_solver
         self.N_horizon = N_horizon
 
+    def pick(self, array, idx):
+        if array.shape[0] == 1:
+            return array[0]
+        return array[idx, :]
+
     def calculate_control(self, state, state_dot, desired_states):
         """Calculate thrust and moments using NMPC.
         Args:
@@ -194,8 +199,8 @@ class NMPCController(AuxiliaryController):
         des_state_ = desired_states[:,:10]
         state_ = state[:10]
         for i in range(self.N_horizon):
-            self.ocp_solver.set(i, "yref", np.concatenate((des_state_[i, :] , self.u_ref)))
-        self.ocp_solver.set(self.N_horizon, "yref", des_state_[self.N_horizon-1,:])
+            self.ocp_solver.set(i, "yref", np.concatenate((self.pick(des_state_, i) , self.u_ref)))
+        self.ocp_solver.set(self.N_horizon, "yref", self.pick(des_state_,self.N_horizon-1))
         # status = self.ocp_solver.solve()
         self.u_opt = self.ocp_solver.solve_for_x0(
             x0_bar=state[:10]
