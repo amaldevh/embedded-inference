@@ -21,7 +21,7 @@ if __name__ == "__main__":
             client.send(u)
             print(state_state_des)
             # sleept = max(1.7e-2 - (time.perf_counter() - ti), 0.0)
-            print("U: ",u," , t: ", sleept)
+            print("U: ",u )
             print("Avg freq: ", i/(time.perf_counter() - ts))
             # time.sleep(sleept)
         tf = time.perf_counter()
