@@ -96,6 +96,7 @@ if __name__ == "__main__":
             latest_state[0, :] = preprocessor.ProcessObservation(drone_states, drone_state_dots,
                                                                 prev_drone_states, prev_drone_state_dots)
             u = control_tick(latest_state)
+            u = state[:6,0] + u
             client.send(u)
             # sleept = max(1.7e-2 - (time.perf_counter() - ti), 0.0)
             print("U: ",u )
