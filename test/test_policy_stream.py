@@ -74,7 +74,7 @@ vxyz_scaling = np.array([0.024,0.024, 0.008])*0.8
 preprocessor = bindings.TrajectoryPlanningProcessor(ACTION_HISTORY_SIZE, STATE_HISTORY_SIZE, True, True,
                                                     waypoints, 1.0, 1.0, 0.4, xyz_scaling, vxyz_scaling, bindings.GateAcceptanceMode.FullRectangularOpening )
 
-preprocessor.reset(0)
+preprocessor.Reset(0)
 drone_states =np.zeros((13,1)) # must have
 drone_state_dots =np.zeros((13,1)) # keep empty
 prev_drone_states =np.zeros((13,1)) # must have
@@ -90,14 +90,15 @@ if __name__ == "__main__":
             ti = time.perf_counter()
             drone_states[:, 0] = client.receive()
             if not received_initial:
-                prev_drone_states[:] = drone_states[:]
+                prev_drone_states[:,0] = drone_states[:,0]
                 received_initial = True 
                 continue
             latest_state[0, :] = preprocessor.ProcessObservation(drone_states, drone_state_dots,
-                                                                prev_drone_states, prev_drone_state_dots)
+                                                                prev_drone_states, prev_drone_state_dots, latest_state) # pass latest_state as dummy
             u = control_tick(latest_state)
             u = state[:6,0] + u
             client.send(u)
+            prev_drone_states[:,0] = drone_states[:,0]
             # sleept = max(1.7e-2 - (time.perf_counter() - ti), 0.0)
             print("U: ",u )
             print("Avg freq: ", i/(time.perf_counter() - ts))
