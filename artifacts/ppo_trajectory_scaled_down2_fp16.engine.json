@@ -1,0 +1,26 @@
+{
+  "tensorrt_version": "8.2.1.9",
+  "engine_name": "Unnamed Network 0",
+  "num_optimization_profiles": 1,
+  "bindings": [
+    {
+      "name": "observation",
+      "mode": "input",
+      "shape": [
+        1,
+        186
+      ],
+      "dtype": "DataType.FLOAT"
+    },
+    {
+      "name": "action",
+      "mode": "output",
+      "shape": [
+        1,
+        6
+      ],
+      "dtype": "DataType.FLOAT"
+    }
+  ],
+  "warning": "TensorRT engines are tied to the TensorRT/CUDA/GPU environment. Rebuild this engine on the deployment Jetson."
+}
