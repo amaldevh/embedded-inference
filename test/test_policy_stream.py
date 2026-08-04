@@ -68,7 +68,7 @@ if CURVE_TYPE == "circle":
     waypoints = np.array(waypoint_generator.GenerateCircleWaypoints(1.5, 0,0,0.8, 0.8, 0.5, feasibility))
 else:
     waypoints = np.array(waypoint_generator.GenerateLissajousWaypoints(1.5, 1.5, 2*np.pi/12, 2*np.pi/6, np.pi/2,0, 0.5, 0.8, 0.8, feasibility))
-xyz_scaling = np.array([0.10, 0.10, 0.03])
+xyz_scaling = np.array([0.10, 0.10, 0.03])*2
 vxyz_scaling = np.array([0.024,0.024, 0.008])*0.8
 net_scaling = np.array((*xyz_scaling, *vxyz_scaling))
 
