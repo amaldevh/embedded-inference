@@ -53,7 +53,7 @@ def control_tick(latest_state):
         synchronize=True,
 #        use_cuda_graph=True,
     )
-    action = outputs["output_0"][0]  # persistent view, overwritten next call
+    action = outputs["action"][0]  # persistent view, overwritten next call
     action[np.isnan(action)] = 0.0
 
     return action
@@ -70,6 +70,7 @@ else:
     waypoints = np.array(waypoint_generator.GenerateLissajousWaypoints(1.5, 1.5, 2*np.pi/12, 2*np.pi/6, np.pi/2,0, 0.5, 0.8, 0.8, feasibility))
 xyz_scaling = np.array([0.10, 0.10, 0.03])
 vxyz_scaling = np.array([0.024,0.024, 0.008])*0.8
+net_scaling = np.array((*xyz_scaling, *vxyz_scaling))
 
 preprocessor = bindings.TrajectoryPlanningProcessor(ACTION_HISTORY_SIZE, STATE_HISTORY_SIZE, True, True,
                                                     waypoints, 1.0, 1.0, 0.4, xyz_scaling, vxyz_scaling, bindings.GateAcceptanceMode.FullRectangularOpening )
@@ -80,6 +81,7 @@ drone_state_dots =np.zeros((13,1)) # keep empty
 prev_drone_states =np.zeros((13,1)) # must have
 prev_drone_state_dots =np.zeros((13,1)) # keep empty
 latest_state = state_host.copy()
+latest_state_dummy = latest_state.reshape(-1,1)
 print("Starting pos: ", waypoints[0][:3])
 
 if __name__ == "__main__":
@@ -94,9 +96,9 @@ if __name__ == "__main__":
                 received_initial = True 
                 continue
             latest_state[0, :] = preprocessor.ProcessObservation(drone_states, drone_state_dots,
-                                                                prev_drone_states, prev_drone_state_dots, latest_state) # pass latest_state as dummy
-            u = control_tick(latest_state)
-            u = state[:6,0] + u
+                                                                prev_drone_states, prev_drone_state_dots, latest_state_dummy) # pass latest_state as dummy
+            u = control_tick(latest_state)*net_scaling
+            u = drone_states[:6,0] + u
             client.send(u)
             prev_drone_states[:,0] = drone_states[:,0]
             # sleept = max(1.7e-2 - (time.perf_counter() - ti), 0.0)
