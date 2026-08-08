@@ -1,112 +1,261 @@
 import os
 import sys
-import bindings.bindings as bindings
 import time
+
+import bindings
 import numpy as np
+
 from quarc_stream import Streamer
-import numpy as np
 from jetson_inference.runtime import TensorRTRunner
-import time
 
-# Sample time (100 Hz)
+
 SAMPLE_TIME = 0.01
+PHYSICS_STEPS_PER_CONTROL = 10
 
-# Hardcoded model path
-MODEL_PATH = r"ppo_trajectory_scaled_down2.onnx"
+CUDA_ENGINE = "/path/to/model.engine"
+
+GRAVITY_VECTOR = np.array(
+    [0.0, 0.0, -9.81],
+    dtype=np.float64,
+)
+
+OUTPUT_DIMS = 3
 
 
-# Distance and offset parameters
-Z_OFFSET = 1.0
-MIN_DIST = 1.0
-MAX_DIST = 1.0
+def make_processor(
+    processor_class: type,
+    state_key: str,
+    physics_dt: float,
+    seed: int,
+):
+    return processor_class(
+        state_key=state_key,
+        use_rotation_matrix=True,
+        state_history_len=20,
+        future_waypoint_num=20,
+        action_scaling=[9.0, 9.0, 15.0],
+        action_bias=[0.0, 0.0, 0.0],
+        physics_steps_per_control=PHYSICS_STEPS_PER_CONTROL,
+        physics_dt=physics_dt,
+        horizontal_amplitude_min=1.35,
+        horizontal_amplitude_max=1.75,
+        vertical_amplitude_min=0.3,
+        vertical_amplitude_max=0.4,
+        height_offset_min=0.7,
+        height_offset_max=1.0,
+        trajectory_speed_min=1.0,
+        trajectory_speed_max=1.5,
+        maximum_normal_acceleration=4.0,
+        vertical_position_weight=2.0,
+        vertical_velocity_weight=0.04,
+        fixed_zero_yaw_probability=1.0,
+        trajectory_sampling_attempts=64,
+        trajectory_seed=seed,
+    )
 
-# History sizes
-ACTION_HISTORY_SIZE = 10
-STATE_HISTORY_SIZE = 10
 
-# Gate parameters
-GATE_WIDTH = 0.1
-GATE_HEIGHT = 0.1
-GATE_CROSSING_RADIUS = 0.6
+processor = make_processor(
+    bindings.TrajectoryTrackingProcessor,
+    "quadrotor",
+    1e-3,
+    42,
+)
 
-# IO
-INPUT_DIMS = 186
-OUTPUT_DIMS=6
-runner = TensorRTRunner("artifacts/ppo_trajectory_scaled_down2_fp16.engine")
+processor.update_trajectory()
 
-# Construct, allocate, and warm before arming.
-state_host = np.empty((1, INPUT_DIMS), dtype=np.float32)
-state_host.fill(0)
+INPUT_DIMS = processor.observation_dimension
+
+runner = TensorRTRunner(CUDA_ENGINE)
+
+
+trt_input = {
+    "quadrotor": np.zeros(
+        (1, INPUT_DIMS),
+        dtype=np.float32,
+    )
+}
+
 for _ in range(100):
-    runner.infer({"observation": state_host})
+    runner.infer(
+        {"observation": trt_input["quadrotor"]}
+    )
 
-# Optional. Keep disabled until the normal path is verified on the target model.
-#runner.capture_cuda_graph()
 
-def control_tick(latest_state):
-    # Prefer writing preprocessing results directly into a reusable pinned tensor
-    # for truly asynchronous H2D transfer. This NumPy assignment is illustrative.
-    state_host[0, :] = latest_state
+def control_tick(observation_):
     outputs = runner.infer(
-        {"observation": state_host},
+        {
+            "observation":
+                observation_["quadrotor"]
+        },
         return_cpu=True,
         synchronize=True,
-#        use_cuda_graph=True,
     )
-    action = outputs["action"][0]  # persistent view, overwritten next call
+
+    action = outputs["action"][0]
     action[np.isnan(action)] = 0.0
 
     return action
 
-# Trajectory processing
-feasibility = bindings.FeasibilityLimits() # default
-feasibility.max_tilt_rad = 1.1344640137963142
-feasibility.max_normal_acceleration = 15.0
-waypoint_generator =  bindings.WaypointGenerator()
-CURVE_TYPE = "circle"
-if CURVE_TYPE == "circle":
-    waypoints = np.array(waypoint_generator.GenerateCircleWaypoints(1.5, 0,0,0.8, 0.8, 0.5, feasibility))
-else:
-    waypoints = np.array(waypoint_generator.GenerateLissajousWaypoints(1.5, 1.5, 2*np.pi/12, 2*np.pi/6, np.pi/2,0, 0.5, 0.8, 0.8, feasibility))
-xyz_scaling = np.array([0.10, 0.10, 0.03])*2
-vxyz_scaling = np.array([0.024,0.024, 0.008])*0.8
-net_scaling = np.array((*xyz_scaling, *vxyz_scaling))
 
-preprocessor = bindings.TrajectoryPlanningProcessor(ACTION_HISTORY_SIZE, STATE_HISTORY_SIZE, True, True,
-                                                    waypoints, 1.0, 1.0, 0.4, xyz_scaling, vxyz_scaling, bindings.GateAcceptanceMode.FullRectangularOpening )
+drone_states = {
+    "quadrotor":
+        np.zeros(13, dtype=np.float32)
+}
 
-preprocessor.Reset(0)
-drone_states =np.zeros((13,1)) # must have
-drone_state_dots =np.zeros((13,1)) # keep empty
-prev_drone_states =np.zeros((13,1)) # must have
-prev_drone_state_dots =np.zeros((13,1)) # keep empty
-latest_state = state_host.copy()
-latest_state_dummy = latest_state.reshape(-1,1)
-print("Starting pos: ", waypoints[0][:3])
+drone_state_dots = {
+    "quadrotor":
+        np.zeros(13, dtype=np.float32)
+}
+
+previous_drone_states = {
+    "quadrotor":
+        np.zeros(13, dtype=np.float32)
+}
+
+previous_drone_state_dots = {
+    "quadrotor":
+        np.zeros(13, dtype=np.float32)
+}
+
+
+observation_array = np.empty(
+    INPUT_DIMS,
+    dtype=np.float32,
+)
+
+observation = {
+    "obs": observation_array
+}
+
+policy_action = {
+    "action":
+        np.zeros(3, dtype=np.float32)
+}
+
+processed_action = {
+    "quadrotor":
+        np.zeros(3, dtype=np.float32)
+}
+
+
+def update_states(new_state):
+    np.copyto(
+        drone_states["quadrotor"],
+        np.asarray(
+            new_state,
+            dtype=np.float32,
+        ).reshape(13),
+    )
+
 
 if __name__ == "__main__":
-    received_initial = False
-    with Streamer("tcpip://localhost:18002", OUTPUT_DIMS, 13, Streamer.CLIENT) as client:
-        ts = time.perf_counter()
-        for i in range(100000):
-            ti = time.perf_counter()
-            drone_states[:, 0] = client.receive()
-            if not received_initial:
-                prev_drone_states[:,0] = drone_states[:,0]
-                received_initial = True 
-                continue
-            latest_state[0, :] = preprocessor.ProcessObservation(drone_states, drone_state_dots,
-                                                                prev_drone_states, prev_drone_state_dots, latest_state_dummy) # pass latest_state as dummy
-            u = control_tick(latest_state)*net_scaling
-            u = drone_states[:6,0] + u
-            client.send(u)
-            prev_drone_states[:,0] = drone_states[:,0]
-            # sleept = max(1.7e-2 - (time.perf_counter() - ti), 0.0)
-            print("U: ",u )
-            print("Avg freq: ", i/(time.perf_counter() - ts))
-            # time.sleep(sleept)
-        tf = time.perf_counter()
-    print("Total time: ", tf-ts)
-    print("Avg. time per step: ", (tf-ts)/1000)
-    print("Avg. frequency: ", 1000/(tf-ts))
 
+    with Streamer(
+        "tcpip://localhost:18002",
+        OUTPUT_DIMS,
+        13,
+        Streamer.CLIENT,
+    ) as client:
+
+        # Get the first valid physical state.
+        update_states(client.receive())
+
+        # Initialize processor history exactly once.
+        processor.reset(
+            drone_states["quadrotor"]
+        )
+
+        np.copyto(
+            previous_drone_states["quadrotor"],
+            drone_states["quadrotor"],
+        )
+
+        np.copyto(
+            previous_drone_state_dots["quadrotor"],
+            drone_state_dots["quadrotor"],
+        )
+
+        start_time = time.perf_counter()
+
+        completed_steps = 0
+
+        for i in range(100000):
+
+            update_states(client.receive())
+
+            processor.process_observation(
+                drone_states,
+                drone_state_dots,
+                previous_drone_states,
+                previous_drone_state_dots,
+                observation,
+            )
+
+            np.copyto(
+                trt_input["quadrotor"][0],
+                observation_array,
+            )
+
+            action = control_tick(
+                trt_input
+            )
+
+            np.copyto(
+                policy_action["action"],
+                action,
+            )
+
+            processor.process_action(
+                policy_action,
+                processed_action,
+            )
+
+            client.send(
+                processed_action["quadrotor"]
+            )
+
+            np.copyto(
+                previous_drone_states["quadrotor"],
+                drone_states["quadrotor"],
+            )
+
+            np.copyto(
+                previous_drone_state_dots["quadrotor"],
+                drone_state_dots["quadrotor"],
+            )
+
+            completed_steps += 1
+
+            # Do NOT print every control cycle onboard.
+            if i % 100 == 0:
+                elapsed = (
+                    time.perf_counter()
+                    - start_time
+                )
+
+                print(
+                    "U:",
+                    processed_action["quadrotor"],
+                )
+
+                print(
+                    "Avg freq:",
+                    completed_steps / elapsed,
+                )
+
+        end_time = time.perf_counter()
+
+
+    elapsed = end_time - start_time
+
+    print("Total time:", elapsed)
+
+    print(
+        "Avg. time per step:",
+        elapsed / completed_steps,
+    )
+
+    print(
+        "Avg. frequency:",
+        completed_steps / elapsed,
+    )
